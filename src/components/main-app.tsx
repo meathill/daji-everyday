@@ -3,8 +3,35 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Flame } from 'lucide-react';
 
+// --- 类型定义 ---
+interface FortuneType {
+  level: string;
+  type: 'good' | 'bad';
+  color: string;
+  bg: string;
+  desc: string;
+}
+
+interface Fortune extends FortuneType {
+  poem: string;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  decay: number;
+  reset: () => void;
+  update: () => void;
+  draw: (ctx: CanvasRenderingContext2D) => void;
+}
+
 // --- 配置数据 ---
-const FORTUNE_TYPES = {
+const FORTUNE_TYPES: Record<string, FortuneType> = {
   GREAT_LUCK: { level: '大吉', type: 'good', color: 'text-red-600', bg: 'bg-red-100', desc: '万事如意，心想事成' },
   LUCK: { level: '吉', type: 'good', color: 'text-red-500', bg: 'bg-red-50', desc: '顺风顺水，吉星高照' },
   MIDDLE_LUCK: { level: '中吉', type: 'good', color: 'text-orange-500', bg: 'bg-orange-50', desc: '平稳上升，虽有波折无碍' },
@@ -14,86 +41,93 @@ const FORTUNE_TYPES = {
 };
 
 // 签文库
-const FORTUNES_DATA = [
-  { ...FORTUNE_TYPES.GREAT_LUCK, poem: "长风破浪会有时，直挂云帆济沧海。" },
-  { ...FORTUNE_TYPES.GREAT_LUCK, poem: "好雨知时节，当春乃发生。" },
-  { ...FORTUNE_TYPES.LUCK, poem: "山重水复疑无路，柳暗花明又一村。" },
-  { ...FORTUNE_TYPES.LUCK, poem: "欲穷千里目，更上一层楼。" },
-  { ...FORTUNE_TYPES.MIDDLE_LUCK, poem: "采菊东篱下，悠然见南山。" },
-  { ...FORTUNE_TYPES.SMALL_LUCK, poem: "小荷才露尖尖角，早有蜻蜓立上头。" },
-  { ...FORTUNE_TYPES.BAD, poem: "黑云压城城欲摧，甲光向日金鳞开。（需谨慎）" },
-  { ...FORTUNE_TYPES.GREAT_BAD, poem: "风急天高猿啸哀，渚清沙白鸟飞回。（宜静养）" },
+const FORTUNES_DATA: Fortune[] = [
+  { ...FORTUNE_TYPES.GREAT_LUCK, poem: '长风破浪会有时，直挂云帆济沧海。' },
+  { ...FORTUNE_TYPES.GREAT_LUCK, poem: '好雨知时节，当春乃发生。' },
+  { ...FORTUNE_TYPES.LUCK, poem: '山重水复疑无路，柳暗花明又一村。' },
+  { ...FORTUNE_TYPES.LUCK, poem: '欲穷千里目，更上一层楼。' },
+  { ...FORTUNE_TYPES.MIDDLE_LUCK, poem: '采菊东篱下，悠然见南山。' },
+  { ...FORTUNE_TYPES.SMALL_LUCK, poem: '小荷才露尖尖角，早有蜻蜓立上头。' },
+  { ...FORTUNE_TYPES.BAD, poem: '黑云压城城欲摧，甲光向日金鳞开。（需谨慎）' },
+  { ...FORTUNE_TYPES.GREAT_BAD, poem: '风急天高猿啸哀，渚清沙白鸟飞回。（宜静养）' },
 ];
 
 // --- 粒子火焰组件 (Canvas 实现) ---
-const FireEffect = ({ width = 300, height = 400 }) => {
+const FireEffect = ({ width = 300, height = 400 }: { width?: number; height?: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    let animationFrameId;
-    let particles = [];
+    let animationFrameId: number = 0;
+    const particles: Particle[] = [];
 
-    // 粒子类
-    class Particle {
-      constructor() {
-        this.reset();
-      }
+    // 粒子工厂函数
+    const createParticle = (): Particle => {
+      const particle: Particle = {
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        life: 0,
+        maxLife: 0,
+        size: 0,
+        decay: 0,
+        reset() {
+          // 从底部随机位置生成
+          this.x = Math.random() * width;
+          this.y = height;
+          this.vx = (Math.random() - 0.5) * 2; // 左右随机漂移
+          this.vy = -(Math.random() * 3 + 2);   // 向上速度
+          this.life = Math.random() * 60 + 40;  // 生命周期
+          this.maxLife = this.life;
+          this.size = Math.random() * 15 + 10;
+          this.decay = Math.random() * 0.5 + 0.5; // 衰减速度
+        },
+        update() {
+          this.x += this.vx;
+          this.y += this.vy;
+          this.life -= this.decay;
+          this.size -= 0.1;
 
-      reset() {
-        // 从底部随机位置生成
-        this.x = Math.random() * width;
-        this.y = height;
-        this.vx = (Math.random() - 0.5) * 2; // 左右随机漂移
-        this.vy = -(Math.random() * 3 + 2);   // 向上速度
-        this.life = Math.random() * 60 + 40;  // 生命周期
-        this.maxLife = this.life;
-        this.size = Math.random() * 15 + 10;
-        this.decay = Math.random() * 0.5 + 0.5; // 衰减速度
-      }
+          // 简单的风力/扰动模拟
+          this.vx += (Math.random() - 0.5) * 0.2;
 
-      update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-        this.size -= 0.1;
+          // 如果粒子死了，重置到底部继续燃烧
+          if (this.life <= 0 || this.size <= 0) {
+            this.reset();
+          }
+        },
+        draw(ctx: CanvasRenderingContext2D) {
+          ctx.beginPath();
 
-        // 简单的风力/扰动模拟
-        this.vx += (Math.random() - 0.5) * 0.2;
+          // 基于生命周期计算颜色：白 -> 黄 -> 橙 -> 红 -> 灰
+          const lifeRatio = this.life / this.maxLife;
+          let r = 255, g = 100, b = 0, a = lifeRatio;
 
-        // 如果粒子死了，重置到底部继续燃烧
-        if (this.life <= 0 || this.size <= 0) {
-          this.reset();
+          if (lifeRatio > 0.8) { // 核心热区：白/亮黄
+            r = 255; g = 255; b = 200; a = 0.8;
+          } else if (lifeRatio > 0.5) { // 中间：橙红
+            r = 255; g = 150 + Math.random() * 50; b = 0; a = 0.7;
+          } else { // 顶部：暗红/烟雾
+            r = 150; g = 50; b = 50; a = 0.4;
+          }
+
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+          ctx.arc(this.x, this.y, Math.max(0, this.size), 0, Math.PI * 2);
+          ctx.fill();
         }
-      }
-
-      draw(ctx) {
-        ctx.beginPath();
-
-        // 基于生命周期计算颜色：白 -> 黄 -> 橙 -> 红 -> 灰
-        const lifeRatio = this.life / this.maxLife;
-        let r = 255, g = 100, b = 0, a = lifeRatio;
-
-        if (lifeRatio > 0.8) { // 核心热区：白/亮黄
-          r = 255; g = 255; b = 200; a = 0.8;
-        } else if (lifeRatio > 0.5) { // 中间：橙红
-          r = 255; g = 150 + Math.random() * 50; b = 0; a = 0.7;
-        } else { // 顶部：暗红/烟雾
-          r = 150; g = 50; b = 50; a = 0.4;
-        }
-
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
-        ctx.arc(this.x, this.y, Math.max(0, this.size), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+      };
+      particle.reset();
+      return particle;
+    };
 
     // 初始化粒子
-    for(let i=0; i<150; i++) {
-      particles.push(new Particle());
+    for (let i = 0; i < 150; i++) {
+      particles.push(createParticle());
     }
 
     const render = () => {
@@ -125,9 +159,9 @@ const FireEffect = ({ width = 300, height = 400 }) => {
 // --- 主组件 ---
 
 export default function MainApp() {
-  const [gameState, setGameState] = useState('idle'); // idle, shaking, result, burning
-  const [currentFortune, setCurrentFortune] = useState(null);
-  const [pinnedFortunes, setPinnedFortunes] = useState([]);
+  const [gameState, setGameState] = useState<'idle' | 'shaking' | 'result' | 'burning' | 'pinned'>('idle');
+  const [currentFortune, setCurrentFortune] = useState<Fortune | null>(null);
+  const [pinnedFortunes, setPinnedFortunes] = useState<Fortune[]>([]);
 
   // 模拟摇一摇检测
   const handleShake = () => {
@@ -143,7 +177,7 @@ export default function MainApp() {
 
   const drawFortune = () => {
     const random = Math.floor(Math.random() * FORTUNES_DATA.length);
-    setCurrentFortune(FORTUNES_DATA[random]);
+    setCurrentFortune(FORTUNES_DATA[ random ]);
     setGameState('result');
     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
   };
@@ -166,7 +200,7 @@ export default function MainApp() {
   };
 
   const resetAll = () => {
-    if(confirm("确定要重置所有已固定的灵签吗？")) {
+    if(confirm('确定要重置所有已固定的灵签吗？')) {
       setPinnedFortunes([]);
       setGameState('idle');
       setCurrentFortune(null);
@@ -178,7 +212,7 @@ export default function MainApp() {
 
       {/* 背景纹理 */}
       <div className="absolute inset-0 opacity-10 pointer-events-none"
-           style={{backgroundImage: 'radial-gradient(circle, #ffd700 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
+           style={{ backgroundImage: 'radial-gradient(circle, #ffd700 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
       </div>
 
       {/* 顶部标题栏 */}
@@ -201,7 +235,7 @@ export default function MainApp() {
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
               {pinnedFortunes.map((fortune, idx) => (
-                <div key={idx} className="relative group animate-pop-in" style={{animationDelay: `${idx * 100}ms`}}>
+                <div key={idx} className="relative group animate-pop-in" style={{ animationDelay: `${idx * 100}ms` }}>
                   <div className={`
                     w-12 h-32 border-2 border-amber-300/50 rounded-sm shadow-lg
                     flex flex-col items-center justify-center writing-vertical-lr
